@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patent Multimodal Retriever</title>
+    <style>
+        :root {
+            --primary-red: #dc3545;
+            --primary-green: #28a745;
+            --primary-blue: #007bff;
+            --secondary-gray: #6c757d;
+            --bg-light: #f8f9fa;
+            --shadow-soft: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: var(--bg-light); color: #333; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; font-weight: 300; }
+        
+        /* --- Input Section --- */
+        .input-section { background: white; padding: 25px; border-radius: 12px; box-shadow: var(--shadow-soft); margin-bottom: 30px; }
+        .input-group { display: flex; gap: 25px; margin-bottom: 20px; }
+        .input-box { flex: 1; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background: #fff; }
+        .input-box h3 { margin-top: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #777; border-bottom: 1px solid #f0f0f0; padding-bottom: 12px; margin-bottom: 15px; }
+        
+        textarea { width: 100%; height: 120px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; resize: none; font-size: 14px; outline: none; transition: border-color 0.2s; }
+        textarea:focus { border-color: var(--primary-blue); }
+        
+        input[type="file"] { display: block; margin-top: 10px; font-size: 14px; }
+        .preview { margin-top: 15px; max-height: 120px; border-radius: 4px; display: none; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        
+        .btn-group { display: flex; gap: 12px; }
+        .btn { padding: 14px; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .search-btn { flex: 3; background-color: var(--primary-blue); color: white; }
+        .search-btn:hover { background-color: #0056b3; transform: translateY(-1px); }
+        .search-btn:disabled { background-color: #cbd5e0; cursor: not-allowed; transform: none; }
+        
+        .export-btn { flex: 1; background-color: var(--primary-green); color: white; display: none; }
+        .export-btn:hover { background-color: #218838; transform: translateY(-1px); }
+
+        /* --- Output Section --- */
+        .output-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .column { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); min-height: 500px; display: flex; flex-direction: column; overflow: hidden; }
+        .column-header { padding: 15px; text-align: center; font-weight: bold; color: white; font-size: 15px; }
+        
+        .k1-header { background-color: var(--primary-red); }
+        .k3-header { background-color: var(--primary-green); }
+        .k2-header { background-color: var(--primary-blue); }
+        .combined-header { background-color: var(--secondary-gray); }
+        
+        .result-list { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; max-height: 600px; }
+        .result-item { padding: 12px 18px; border-bottom: 1px solid #f8f9fa; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; }
+        .result-item:hover { background-color: #f1f4f9; }
+        
+        .result-id { font-weight: 600; font-family: 'Courier New', Courier, monospace; }
+        .score { font-size: 0.9em; background: #f0f0f0; padding: 2px 8px; border-radius: 12px; color: #555; }
+
+        /* --- Tooltip --- */
+        #tooltip { display: none; position: fixed; background: rgba(33, 37, 41, 0.95); color: #fff; padding: 15px; border-radius: 8px; z-index: 2000; max-width: 400px; font-size: 13px; line-height: 1.5; box-shadow: 0 10px 25px rgba(0,0,0,0.3); pointer-events: none; backdrop-filter: blur(4px); }
+        #tooltip img { max-width: 100%; border-radius: 4px; display: block; }
+
+        /* --- Loading State --- */
+        #loader { display: none; text-align: center; margin-bottom: 25px; padding: 15px; background: #e9ecef; border-radius: 8px; font-weight: 500; }
+        .spinner { border: 3px solid #dee2e6; border-top: 3px solid var(--primary-blue); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; margin-right: 12px; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Patent Multimodal Retriever</h1>
+
+    <!-- Search Controls -->
+    <div class="input-section">
+        <div class="input-group">
+            <div class="input-box">
+                <h3>Visual Query (Image)</h3>
+                <input type="file" id="imageInput" accept="image/*">
+                <img id="imagePreview" class="preview" alt="Query Preview">
+            </div>
+            <div class="input-box">
+                <h3>Textual Query (Claim / Element)</h3>
+                <textarea id="textInput" placeholder="Describe component or paste claims here..."></textarea>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button id="searchBtn" class="btn search-btn">Run Multimodal Search</button>
+            <button id="exportBtn" class="btn export-btn">Export Results to Excel</button>
+        </div>
+    </div>
+
+    <!-- Status Indicator -->
+    <div id="loader">
+        <div class="spinner"></div> Computing embeddings and searching vector indices...
+    </div>
+
+    <!-- Results Display -->
+    <div class="output-grid">
+        <div class="column">
+            <div class="column-header k1-header">K1: Claims Similarity</div>
+            <ul id="k1List" class="result-list"></ul>
+        </div>
+        <div class="column">
+            <div class="column-header k3-header">K3: Elements Similarity</div>
+            <ul id="k3List" class="result-list"></ul>
+        </div>
+        <div class="column">
+            <div class="column-header k2-header">K2: Visual Drawing Similarity</div>
+            <ul id="k2List" class="result-list"></ul>
+        </div>
+        <div class="column">
+            <div class="column-header combined-header">Integrated Ranking</div>
+            <ul id="combinedList" class="result-list"></ul>
+        </div>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+    const API_BASE = "http://localhost:8000";
+    const DOM = {
+        imageInput: document.getElementById('imageInput'),
+        imagePreview: document.getElementById('imagePreview'),
+        textInput: document.getElementById('textInput'),
+        searchBtn: document.getElementById('searchBtn'),
+        exportBtn: document.getElementById('exportBtn'),
+        loader: document.getElementById('loader'),
+        tooltip: document.getElementById('tooltip'),
+        lists: {
+            k1: document.getElementById('k1List'),
+            k3: document.getElementById('k3List'),
+            k2: document.getElementById('k2List'),
+            combined: document.getElementById('combinedList')
+        }
+    };
+
+    let searchState = {
+        results: null,
+        activeRequest: false
+    };
+
+    // --- Interaction Logic ---
+
+    DOM.imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                DOM.imagePreview.src = ev.target.result;
+                DOM.imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    DOM.searchBtn.addEventListener('click', async () => {
+        const text = DOM.textInput.value.trim();
+        const file = DOM.imageInput.files[0];
+
+        if (!text && !file) return alert('Please enter text or upload an image.');
+
+        const formData = new FormData();
+        if (file) formData.append('query_image', file);
+        if (text) formData.append('query_text', text);
+        formData.append('k', 10);
+
+        setLoading(true);
+
+        try {
+            const resp = await fetch(`${API_BASE}/search`, { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error('Search failed');
+            
+            searchState.results = await resp.json();
+            renderAllResults(searchState.results);
+            DOM.exportBtn.style.display = 'block';
+        } catch (err) {
+            console.error(err);
+            alert('Search error. Check if server is running.');
+        } finally {
+            setLoading(false);
+        }
+    });
+
+    DOM.exportBtn.addEventListener('click', async () => {
+        if (!searchState.results) return;
+
+        const formData = new FormData();
+        formData.append('input_text', DOM.textInput.value);
+        formData.append('input_image_name', DOM.imageInput.files[0] ? DOM.imageInput.files[0].name : "");
+        formData.append('results_json', JSON.stringify(searchState.results));
+
+        try {
+            const resp = await fetch(`${API_BASE}/export`, { method: 'POST', body: formData });
+            if (!resp.ok) throw new Error('Export failed');
+            
+            const blob = await resp.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `Retrieval_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}_USPTO_LGD.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (err) {
+            alert('Export failed.');
+        }
+    });
+
+    // --- Rendering Logic ---
+
+    function setLoading(isLoading) {
+        searchState.activeRequest = isLoading;
+        DOM.loader.style.display = isLoading ? 'block' : 'none';
+        DOM.searchBtn.disabled = isLoading;
+        if (isLoading) {
+            Object.values(DOM.lists).forEach(l => l.innerHTML = '');
+            DOM.exportBtn.style.display = 'none';
+        }
+    }
+
+    function renderAllResults(data) {
+        data.k1.forEach(item => DOM.lists.k1.appendChild(createItem(item, 'var(--primary-red)')));
+        data.k3.forEach(item => DOM.lists.k3.appendChild(createItem(item, 'var(--primary-green)')));
+        data.k2.forEach(item => DOM.lists.k2.appendChild(createItem(item, 'var(--primary-blue)', true)));
+        data.combined.forEach(item => DOM.lists.combined.appendChild(createItem(item, item.color, item.type === 'image', true)));
+    }
+
+    function createItem(data, color, isImage = false, isCombined = false) {
+        const li = document.createElement('li');
+        li.className = 'result-item';
+        
+        const displayId = isCombined ? data.display_id : data.id;
+        const percentage = (data.score * 100).toFixed(1) + '%';
+        
+        li.innerHTML = `
+            <span class="result-id" style="color: ${color}">${displayId}</span>
+            <span class="score">${percentage}</span>
+        `;
+
+        li.onmouseenter = (e) => {
+            DOM.tooltip.style.display = 'block';
+            if (isImage) {
+                DOM.tooltip.innerHTML = `<img src="${API_BASE}${data.tooltip}" alt="Drawing">`;
+            } else {
+                DOM.tooltip.innerText = data.tooltip;
+            }
+            positionTooltip(e);
+        };
+
+        li.onmousemove = positionTooltip;
+        li.onmouseleave = () => DOM.tooltip.style.display = 'none';
+
+        return li;
+    }
+
+    function positionTooltip(e) {
+        const offset = 15;
+        let x = e.clientX + offset;
+        let y = e.clientY + offset;
+        
+        if (x + 400 > window.innerWidth) x = e.clientX - 415;
+        if (y + 300 > window.innerHeight) y = e.clientY - 315;
+
+        DOM.tooltip.style.left = x + 'px';
+        DOM.tooltip.style.top = y + 'px';
+    }
+</script>
+
+</body>
+</html>
