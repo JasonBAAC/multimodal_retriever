@@ -13,16 +13,15 @@ from PIL import Image
 import io
 from transformers import CLIPProcessor, CLIPModel
 from typing import List, Optional
+from datetime import datetime
+import pandas as pd
+from contextlib import asynccontextmanager
 
 # Configuration
 DB_NAME = "USPTO_zip_data.db"
 INDEX_DIR = "index"
 IMAGE_DIR = os.path.join("US_patent_images", "LGD")
 MODEL_ID = "openai/clip-vit-large-patch14"
-
-from datetime import datetime
-import pandas as pd
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,13 +74,10 @@ def load_resources():
                 metadata[key] = json.load(f)
             print(f"Loaded {key} index and metadata.")
 
-# Removed startup_event since we use lifespan now
-
 def get_text_embedding(text: str):
     inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True, max_length=77)
     with torch.no_grad():
         outputs = model.get_text_features(**inputs.to(model.device))
-        # Ensure we have the raw tensor
         features = outputs.pooler_output if hasattr(outputs, 'pooler_output') else outputs
         features = features / features.norm(p=2, dim=-1, keepdim=True)
     return features.cpu().numpy().astype('float32')
@@ -96,26 +92,16 @@ def get_image_embedding(image_bytes: bytes):
     return features.cpu().numpy().astype('float32')
 
 def extract_epatent_number(filename: str):
-    # Pattern: US[patentNumber]-...
     match = re.search(r'US([^-]+)', filename)
     return match.group(1) if match else "Unknown"
 
 @app.post("/search")
 async def search(
-    query_text: Optional[str] = Form(None),
+    query_claim: Optional[str] = Form(None),
+    query_element: Optional[str] = Form(None),
     query_image: Optional[UploadFile] = File(None),
     k: int = Form(10)
 ):
-    if not query_text and not query_image:
-        raise HTTPException(status_code=400, detail="Either query_text or query_image must be provided.")
-    
-    # 1. Generate Query Vector
-    if query_image:
-        image_bytes = await query_image.read()
-        query_vec = get_image_embedding(image_bytes)
-    else:
-        query_vec = get_text_embedding(query_text)
-    
     results = {
         "k1": [],
         "k2": [],
@@ -123,8 +109,9 @@ async def search(
         "combined": []
     }
     
-    # 2. Search DB1 (Claims) - Red
-    if "db1" in indices:
+    # 1. Search DB1 (Claims) if query_claim is provided
+    if query_claim and "db1" in indices:
+        query_vec = get_text_embedding(query_claim)
         scores, ann_ids = indices["db1"].search(query_vec, k)
         for score, idx in zip(scores[0], ann_ids[0]):
             if idx == -1: continue
@@ -135,12 +122,13 @@ async def search(
                 "score": float(score),
                 "tooltip": text,
                 "type": "claim",
-                "suffix": "-c",
+                "suffix": "-claim",
                 "color": "red"
             })
 
-    # 3. Search DB3 (Elements) - Green
-    if "db3" in indices:
+    # 2. Search DB3 (Elements) if query_element is provided
+    if query_element and "db3" in indices:
+        query_vec = get_text_embedding(query_element)
         scores, ann_ids = indices["db3"].search(query_vec, k)
         for score, idx in zip(scores[0], ann_ids[0]):
             if idx == -1: continue
@@ -151,12 +139,14 @@ async def search(
                 "score": float(score),
                 "tooltip": ", ".join(chunks),
                 "type": "element",
-                "suffix": "-e",
+                "suffix": "-element",
                 "color": "green"
             })
 
-    # 4. Search DB2 (Images) - Blue
-    if "db2" in indices:
+    # 3. Search DB2 (Images) if query_image is provided
+    if query_image and "db2" in indices:
+        image_bytes = await query_image.read()
+        query_vec = get_image_embedding(image_bytes)
         scores, ann_ids = indices["db2"].search(query_vec, k)
         for score, idx in zip(scores[0], ann_ids[0]):
             if idx == -1: continue
@@ -165,28 +155,24 @@ async def search(
             results["k2"].append({
                 "id": filename,
                 "score": float(score),
-                "tooltip": f"/api/images/{filename}", # URL for image tooltip
+                "tooltip": f"/api/images/{filename}",
                 "epatent": epatent,
                 "type": "image",
-                "suffix": "-d",
+                "suffix": "-drawing",
                 "color": "blue"
             })
 
-    # 5. Combined List
+    # 4. Combined List
     combined = []
-    # Add from K1
     for r in results["k1"]:
         combined.append({**r, "display_id": f"{r['id']}{r['suffix']}"})
-    # Add from K3
     for r in results["k3"]:
         combined.append({**r, "display_id": f"{r['id']}{r['suffix']}"})
-    # Add from K2
     for r in results["k2"]:
         combined.append({**r, "display_id": f"{r['epatent']}{r['suffix']}"})
     
-    # Sort combined by score desc
     combined.sort(key=lambda x: x["score"], reverse=True)
-    results["combined"] = combined[:k*3] # Show more in combined if needed
+    results["combined"] = combined
 
     return results
 
@@ -245,32 +231,28 @@ async def export_results(
         
         workbook = writer.book
         worksheet = writer.sheets['K2']
-        
-        # Format the column width and row heights
-        worksheet.set_column('C:C', 30) # Column for images
+        worksheet.set_column('C:C', 30)
         
         for i, r in enumerate(k2_list):
             img_filename = r["id"]
             img_path = os.path.join(IMAGE_DIR, img_filename)
-            
             if os.path.exists(img_path):
                 try:
-                    # Convert TIF to PNG for Excel compatibility
                     with Image.open(img_path) as img:
-                        # Resize for better fit in cell (e.g. max height 150)
-                        max_size = (200, 150)
+                        # Increase size for better quality (original-like)
+                        max_size = (800, 600)
                         img.thumbnail(max_size)
-                        
                         img_byte_arr = io.BytesIO()
                         img.save(img_byte_arr, format='PNG')
                         
-                        # Set row height to match image height (approx pixels to points)
-                        worksheet.set_row(i + 1, 120)
-                        
+                        # Set row height to accommodate larger image
+                        worksheet.set_row(i + 1, 300) 
                         worksheet.insert_image(i + 1, 2, img_filename, {
                             'image_data': img_byte_arr,
                             'x_offset': 5,
                             'y_offset': 5,
+                            'x_scale': 0.5, # Scale down slightly in cell
+                            'y_scale': 0.5,
                             'object_position': 1
                         })
                 except Exception as e:

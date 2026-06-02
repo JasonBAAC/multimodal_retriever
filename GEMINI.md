@@ -14,6 +14,7 @@
 ### Refinement Tools
 - **Target Selection (`02_target_selection.py`)**: Isolates LG Display data into `USPTO_LGD`.
 - **Element Parser (`03_element_parser.py`)**: Extracts components and reference characters from descriptions.
+- **Element Parser POS (`03_element_parser_pos.py`)**: Advanced component extraction using NLTK POS tagging for higher precision.
 
 ---
 
@@ -25,17 +26,26 @@
     1.  **K1 (Claims)**: Search by representative claims.
     2.  **K2 (Images)**: Search by visual similarity in drawings.
     3.  **K3 (Elements)**: Search by technical component names.
-- **Web UI**: A single-page application (`index.html`) featuring:
+- **3-Way Search**: Supports independent or simultaneous searching by Claim, Element, and Drawing.
+- **Web UI (`06_index.html`)**: A Google-style single-page application featuring:
+    - **2x2 Input Grid**: Optimized layout with Claim (Top-Left), Element (Bottom-Left), and Drawing (Right-Full).
+    - **Reset Functionality**: One-click "초기화" button to clear all inputs and results.
     - **Similarity Scores**: Displayed as percentages with 1-decimal precision (e.g., 95.4%).
-    - **Interactive Tooltips**: Text content for K1/K3, live image previews for K2.
-    - **Excel Export**: Generate multi-tab reports (`Retrieval_YYYY_MM_DD HH_MM_SS_USPTO_LGD.xlsx`) containing overall results and detailed tabs for K1, K2, and K3.
+    - **Interactive Tooltips**: Text content for K1/K3, live high-quality image previews for K2.
+    - **Excel Export**: Generate multi-tab reports with original-quality images in the K2 tab and adjusted row heights.
     - **Color Coding**: Red (Claims), Green (Elements), Blue (Images).
+
+---
+
+## 3. Utilities
+
+- **POS Tagging (`99_text.ipynb`)**: Jupyter notebook for automated English Part-of-Speech tagging using NLTK.
 
 ---
 
 ## Environment Setup
 - **Python 3.14**
-- **Dependencies**: `pip install fastapi uvicorn transformers torch pillow faiss-cpu requests python-dotenv lxml tqdm pandas xlsxwriter openpyxl`
+- **Dependencies**: `pip install fastapi uvicorn transformers torch pillow faiss-cpu requests python-dotenv lxml tqdm pandas xlsxwriter openpyxl nltk`
 - **Activation**: `.\Scripts\activate` (Windows)
 
 ## File Structure
@@ -44,7 +54,8 @@
 - `03_element_parser.py`: Component extraction tool.
 - `04_build_index.py`: Indexing pipeline.
 - `05_multimodal_retriever.py`: Search backend API.
-- `06_index.html`: Frontend UI.
+- `06_index.html`: Frontend UI (Google Style).
+- `99_text.ipynb`: NLP utility notebook.
 - `index/`: Vector indices and metadata.
 - `USPTO_zip_data.db`: Source database (Target table: `USPTO_LGD`).
 - `US_patent_images/LGD/`: Isolated patent drawings.
