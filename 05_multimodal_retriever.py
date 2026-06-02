@@ -6,7 +6,7 @@ import numpy as np
 import faiss
 import re
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -95,6 +95,38 @@ def extract_epatent_number(filename: str):
     match = re.search(r'US([^-]+)', filename)
     return match.group(1) if match else "Unknown"
 
+def tif_to_png_response(file_path_or_bytes):
+    try:
+        if isinstance(file_path_or_bytes, bytes):
+            img = Image.open(io.BytesIO(file_path_or_bytes))
+        else:
+            img = Image.open(file_path_or_bytes)
+            
+        img_byte_arr = io.BytesIO()
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        return StreamingResponse(img_byte_arr, media_type="image/png")
+    except Exception as e:
+        print(f"Conversion error: {e}")
+        raise HTTPException(status_code=500, detail=f"Image conversion failed: {str(e)}")
+
+@app.post("/api/preview")
+async def preview_image(file: UploadFile = File(...)):
+    """Converts any uploaded image (including TIF) to PNG for browser preview."""
+    content = await file.read()
+    return tif_to_png_response(content)
+
+@app.get("/api/images/{filename}")
+async def get_image(filename: str):
+    path = os.path.join(IMAGE_DIR, filename)
+    if os.path.exists(path):
+        if filename.lower().endswith(('.tif', '.tiff')):
+            return tif_to_png_response(path)
+        return FileResponse(path)
+    raise HTTPException(status_code=404, detail="Image not found")
+
 @app.post("/search")
 async def search(
     query_claim: Optional[str] = Form(None),
@@ -109,7 +141,7 @@ async def search(
         "combined": []
     }
     
-    # 1. Search DB1 (Claims) if query_claim is provided
+    # 1. Search DB1 (Claims)
     if query_claim and "db1" in indices:
         query_vec = get_text_embedding(query_claim)
         scores, ann_ids = indices["db1"].search(query_vec, k)
@@ -126,7 +158,7 @@ async def search(
                 "color": "red"
             })
 
-    # 2. Search DB3 (Elements) if query_element is provided
+    # 2. Search DB3 (Elements)
     if query_element and "db3" in indices:
         query_vec = get_text_embedding(query_element)
         scores, ann_ids = indices["db3"].search(query_vec, k)
@@ -143,7 +175,7 @@ async def search(
                 "color": "green"
             })
 
-    # 3. Search DB2 (Images) if query_image is provided
+    # 3. Search DB2 (Images)
     if query_image and "db2" in indices:
         image_bytes = await query_image.read()
         query_vec = get_image_embedding(image_bytes)
@@ -176,14 +208,6 @@ async def search(
 
     return results
 
-@app.get("/api/images/{filename}")
-async def get_image(filename: str):
-    path = os.path.join(IMAGE_DIR, filename)
-    if os.path.exists(path):
-        return FileResponse(path)
-    raise HTTPException(status_code=404, detail="Image not found")
-
-# Serve frontend
 @app.get("/")
 async def read_index():
     return FileResponse("06_index.html")
@@ -195,62 +219,45 @@ async def export_results(
     results_json: str = Form(...)
 ):
     results = json.loads(results_json)
-    
     timestamp = datetime.now().strftime("%Y_%m_%d %H_%M_%S")
     filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
     filepath = os.path.join(os.getcwd(), filename)
     
     with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:
-        # 1. Overall Tab
-        overall_data = [
-            ["Input Type", "Content"],
-            ["Text", input_text],
-            ["Image", input_image_name],
-            [],
-            ["Rank", "Display ID", "Similarity (%)", "Type"]
-        ]
+        # 1. Overall
+        overall_data = [["Input Type", "Content"], ["Text", input_text], ["Image", input_image_name], [], ["Rank", "Display ID", "Similarity (%)", "Type"]]
         for i, r in enumerate(results.get("combined", [])):
-            score_pct = f"{r['score'] * 100:.1f}%"
-            overall_data.append([i+1, r["display_id"], score_pct, r["type"]])
-            
+            overall_data.append([i+1, r["display_id"], f"{r['score'] * 100:.1f}%", r["type"]])
         pd.DataFrame(overall_data).to_excel(writer, sheet_name="overall", index=False, header=False)
         
-        # 2. K1 Tab
+        # 2. K1
         k1_data = [{"patentNumber": r["id"], "rep_ind_Claim": r["tooltip"]} for r in results.get("k1", [])]
         pd.DataFrame(k1_data).to_excel(writer, sheet_name="K1", index=False)
         
-        # 3. K3 Tab
+        # 3. K3
         k3_data = [{"patentNumber": r["id"], "chunkFromElement": r["tooltip"]} for r in results.get("k3", [])]
         pd.DataFrame(k3_data).to_excel(writer, sheet_name="K3", index=False)
         
-        # 4. K2 Tab with Image Embedding
+        # 4. K2
         k2_list = results.get("k2", [])
         k2_meta = [{"EpatentNumber": r["epatent"], "파일명": r["id"], "이미지": ""} for r in k2_list]
-        df_k2 = pd.DataFrame(k2_meta)
-        df_k2.to_excel(writer, sheet_name="K2", index=False)
+        pd.DataFrame(k2_meta).to_excel(writer, sheet_name="K2", index=False)
         
-        workbook = writer.book
         worksheet = writer.sheets['K2']
         worksheet.set_column('C:C', 30)
-        
         for i, r in enumerate(k2_list):
-            img_filename = r["id"]
-            img_path = os.path.join(IMAGE_DIR, img_filename)
+            img_path = os.path.join(IMAGE_DIR, r["id"])
             if os.path.exists(img_path):
                 try:
                     with Image.open(img_path) as img:
-                        # Use original image bytes without resizing
                         img_byte_arr = io.BytesIO()
+                        if img.mode != "RGB": img = img.convert("RGB")
                         img.save(img_byte_arr, format='PNG')
-                        
-                        # Set row height and scale visually in the cell
                         worksheet.set_row(i + 1, 400) 
-                        worksheet.insert_image(i + 1, 2, img_filename, {
+                        worksheet.insert_image(i + 1, 2, r["id"], {
                             'image_data': img_byte_arr,
-                            'x_offset': 5,
-                            'y_offset': 5,
-                            'x_scale': 0.3, # Fit visually while keeping high res
-                            'y_scale': 0.3,
+                            'x_offset': 5, 'y_offset': 5,
+                            'x_scale': 0.3, 'y_scale': 0.3,
                             'object_position': 1
                         })
                 except Exception as e:
