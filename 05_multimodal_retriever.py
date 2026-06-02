@@ -243,14 +243,13 @@ async def export_results(
                         img_byte_arr = io.BytesIO()
                         img.save(img_byte_arr, format='PNG')
                         
-                        # Set row height and column width to accommodate full-size or high-res preview
-                        # Note: original image might be huge, so we scale it in the cell while keeping data quality
+                        # Set row height and scale visually in the cell
                         worksheet.set_row(i + 1, 400) 
                         worksheet.insert_image(i + 1, 2, img_filename, {
                             'image_data': img_byte_arr,
                             'x_offset': 5,
                             'y_offset': 5,
-                            'x_scale': 0.3, # Maintain high resolution but fit visually
+                            'x_scale': 0.3, # Fit visually while keeping high res
                             'y_scale': 0.3,
                             'object_position': 1
                         })
