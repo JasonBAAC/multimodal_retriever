@@ -239,20 +239,19 @@ async def export_results(
             if os.path.exists(img_path):
                 try:
                     with Image.open(img_path) as img:
-                        # Increase size for better quality (original-like)
-                        max_size = (800, 600)
-                        img.thumbnail(max_size)
+                        # Use original image bytes without resizing
                         img_byte_arr = io.BytesIO()
                         img.save(img_byte_arr, format='PNG')
                         
-                        # Set row height to accommodate larger image
-                        worksheet.set_row(i + 1, 300) 
+                        # Set row height and column width to accommodate full-size or high-res preview
+                        # Note: original image might be huge, so we scale it in the cell while keeping data quality
+                        worksheet.set_row(i + 1, 400) 
                         worksheet.insert_image(i + 1, 2, img_filename, {
                             'image_data': img_byte_arr,
                             'x_offset': 5,
                             'y_offset': 5,
-                            'x_scale': 0.5, # Scale down slightly in cell
-                            'y_scale': 0.5,
+                            'x_scale': 0.3, # Maintain high resolution but fit visually
+                            'y_scale': 0.3,
                             'object_position': 1
                         })
                 except Exception as e:
