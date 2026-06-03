@@ -200,7 +200,7 @@ def process_pipeline():
                         continue
                     parts = m.name.split('/')
                     if len(parts) < 3: continue
-                    if parts[0] != base_folder_name:
+                    if parts[0] != base_folder_name.split('_')[0]:
                         continue
                     if parts[1] == "REISSUE" or parts[1].startswith("UTIL"):
                         members.append(m)

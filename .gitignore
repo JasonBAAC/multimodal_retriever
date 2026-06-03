@@ -6,6 +6,8 @@ venv/
 env/
 .env/
 Include/
+include/
+lib/
 Lib/
 Scripts/
 bin/
