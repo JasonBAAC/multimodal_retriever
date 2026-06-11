@@ -13,12 +13,20 @@ Scripts/
 bin/
 share/
 temp/
+PTGRDT/
+PTGRD2/
+
 
 # Python 캐시
 __pycache__/
 *.pyo
 *.pyd
 .Python
+*.cfg
+*.egg
+*.egg-info/
+*.manifest
+*.spec
 
 # 패키지 빌드
 dist/
@@ -48,6 +56,6 @@ log/
 *.xlsx
 *.docx
 *.png
-
+file_list.txt
 
 EOF
