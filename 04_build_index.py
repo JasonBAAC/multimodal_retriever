@@ -135,7 +135,7 @@ def build_indices():
         combined_texts = []
         element_chunks = []
         for p_num, chunks_json in records:
-            chunks = json.loads(chunks_json)
+            chunks = [c.strip() for c in chunks_json.split(",") if c.strip()]
             if chunks:
                 combined_texts.append(" ".join(chunks))
                 patent_nums.append(p_num)
