@@ -199,6 +199,10 @@ async def search(
                 "color": "red"
             })
 
+    # Normalize query_element: sort comma-separated terms alphabetically
+    if query_element:
+        query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
+
     # 2. Search DB3 (Elements)
     if query_element and "db3" in indices:
         query_vec = get_text_embedding(query_element)
@@ -285,6 +289,8 @@ async def export_results(
     results_json: str = Form(...)
 ):
     results = json.loads(results_json)
+    if query_element:
+        query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
     timestamp = datetime.now().strftime("%Y_%m_%d %H_%M_%S")
     filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
     filepath = os.path.join(os.getcwd(), filename)

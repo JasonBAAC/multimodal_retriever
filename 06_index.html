@@ -91,7 +91,7 @@
             </div>
             <div class="input-card element-area">
                 <h3>Element Search</h3>
-                <textarea id="elementInput" placeholder="주요 구성 요소 또는 기술 키워드를 나열하여 입력하세요..."></textarea>
+                <textarea id="elementInput" placeholder="주요 구성 요소 또는 기술 키워드를 나열하여 입력하세요(쉼표로 구분)..."></textarea>
             </div>
             <div class="input-card drawing-area">
                 <h3>Drawing Search</h3>
@@ -194,9 +194,18 @@
         DOM.exportBtn.style.display = 'none';
     });
 
+    function sortCommaList(s) {
+        return s.split(',').map(t => t.trim()).filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}))
+            .join(', ');
+    }
+
     DOM.searchBtn.addEventListener('click', async () => {
-        const claim = DOM.claim.value.trim(), element = DOM.element.value.trim(), image = DOM.file.files[0];
+        const claim = DOM.claim.value.trim();
+        let element = DOM.element.value.trim();
+        const image = DOM.file.files[0];
         if (!claim && !element && !image) return alert('검색할 텍스트 또는 도면을 입력해 주세요.');
+        if (element) { element = sortCommaList(element); DOM.element.value = element; }
         currentQueryClaim = claim;
         currentQueryElement = element;
 
