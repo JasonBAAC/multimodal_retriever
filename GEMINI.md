@@ -9,7 +9,9 @@
 
 ### API & ZIP Pipelines
 - **API (`01_pipeline_api_data.py`)**: Real-time LG Display patent collection.
-- **ZIP (`01_pipeline_zip_data.py`)**: Bulk archive processing with skip logic and XML cleaning.
+- **TAR/ZIP (`01_pipeline_zip_data.py`)**: Bulk archive processing. Supports both `.tar` and `.zip` top-level archives in `PTGRDT/`. CLI args:
+  - `--grantDate YYYYMMDD`: process a single archive matching the date string (default: all files)
+  - `--image_extract y/n`: toggle TIF extraction to `US_patent_images/` (default: `y`)
 
 ### Refinement Tools
 - **Target Selection (`02_target_selection.py`)**: Isolates LG Display data into `USPTO_LGD`.

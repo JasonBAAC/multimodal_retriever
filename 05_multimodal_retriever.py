@@ -95,6 +95,47 @@ def extract_epatent_number(filename: str):
     match = re.search(r'US([^-]+)', filename)
     return match.group(1) if match else "Unknown"
 
+def compute_rrf(ranked_lists: list, k: int = 60) -> dict:
+    scores = {}
+    for lst in ranked_lists:
+        seen = set()
+        for rank, pid in enumerate(lst, start=1):
+            if pid not in seen:
+                seen.add(pid)
+                scores[pid] = scores.get(pid, 0.0) + 1.0 / (k + rank)
+    return scores
+
+def _write_with_highlight(worksheet, row: int, col: int, text: str, query: str, highlight_fmt):
+    """Write cell with yellow-highlighted words that match query terms."""
+    if not query or not text:
+        worksheet.write(row, col, text or "")
+        return
+    words = list({w for w in re.split(r'\W+', query) if len(w) > 1})
+    if not words:
+        worksheet.write(row, col, text)
+        return
+    pattern = re.compile('(' + '|'.join(re.escape(w) for w in words) + ')', re.IGNORECASE)
+    parts = pattern.split(text)
+    args, has_match = [], False
+    for i, part in enumerate(parts):
+        if part:
+            if i % 2 == 1:
+                args += [highlight_fmt, part]
+                has_match = True
+            else:
+                args.append(part)
+    if not has_match:
+        worksheet.write(row, col, text)
+        return
+    str_count = sum(1 for a in args if isinstance(a, str))
+    if str_count >= 2:
+        try:
+            worksheet.write_rich_string(row, col, *args)
+            return
+        except Exception:
+            pass
+    worksheet.write(row, col, text, highlight_fmt)
+
 def tif_to_png_response(file_path_or_bytes):
     try:
         if isinstance(file_path_or_bytes, bytes):
@@ -194,16 +235,39 @@ async def search(
                 "color": "blue"
             })
 
-    # 4. Combined List
-    combined = []
+    # 4. Combined List — display_id is always the bare patent number (no suffix)
+    combined_raw = []
     for r in results["k1"]:
-        combined.append({**r, "display_id": f"{r['id']}{r['suffix']}"})
+        combined_raw.append({**r, "display_id": r["id"]})
     for r in results["k3"]:
-        combined.append({**r, "display_id": f"{r['id']}{r['suffix']}"})
+        combined_raw.append({**r, "display_id": r["id"]})
     for r in results["k2"]:
-        combined.append({**r, "display_id": f"{r['epatent']}{r['suffix']}"})
-    
-    combined.sort(key=lambda x: x["score"], reverse=True)
+        combined_raw.append({**r, "display_id": r["epatent"]})
+
+    active_count = sum([bool(results["k1"]), bool(results["k3"]), bool(results["k2"])])
+    if active_count >= 2:
+        ranked_lists = []
+        if results["k1"]: ranked_lists.append([r["id"] for r in results["k1"]])
+        if results["k3"]: ranked_lists.append([r["id"] for r in results["k3"]])
+        if results["k2"]: ranked_lists.append([r["epatent"] for r in results["k2"]])
+        rrf_scores = compute_rrf(ranked_lists)
+        # Deduplicate by patent number; keep highest individual score per patent
+        seen: dict = {}
+        for item in combined_raw:
+            pid = item["epatent"] if item["type"] == "image" else item["id"]
+            item["rrf_score"] = round(rrf_scores.get(pid, 0.0), 6)
+            if pid not in seen or item["score"] > seen[pid]["score"]:
+                seen[pid] = item
+        combined = sorted(seen.values(), key=lambda x: x["rrf_score"], reverse=True)
+    else:
+        # Single query: deduplicate (e.g. multiple drawings of same patent) and sort by score
+        seen = {}
+        for item in combined_raw:
+            pid = item["epatent"] if item["type"] == "image" else item["id"]
+            if pid not in seen or item["score"] > seen[pid]["score"]:
+                seen[pid] = item
+        combined = sorted(seen.values(), key=lambda x: x["score"], reverse=True)
+
     results["combined"] = combined
 
     return results
@@ -216,6 +280,8 @@ async def read_index():
 async def export_results(
     input_text: str = Form(""),
     input_image_name: str = Form(""),
+    query_claim: str = Form(""),
+    query_element: str = Form(""),
     results_json: str = Form(...)
 ):
     results = json.loads(results_json)
@@ -224,19 +290,30 @@ async def export_results(
     filepath = os.path.join(os.getcwd(), filename)
     
     with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:
+        highlight_fmt = writer.book.add_format({'bg_color': '#FFFF00'})
+
         # 1. Overall
-        overall_data = [["Input Type", "Content"], ["Text", input_text], ["Image", input_image_name], [], ["Rank", "Display ID", "Similarity (%)", "Type"]]
+        overall_data = [["Input Type", "Content"], ["Text", input_text], ["Image", input_image_name], [], ["Rank", "Display ID", "Similarity (%)", "Type", "RRF Score"]]
         for i, r in enumerate(results.get("combined", [])):
-            overall_data.append([i+1, r["display_id"], f"{r['score'] * 100:.1f}%", r["type"]])
+            rrf = r.get("rrf_score")
+            overall_data.append([i+1, r["display_id"], f"{r['score'] * 100:.1f}%", r["type"], f"{rrf:.6f}" if rrf is not None else ""])
         pd.DataFrame(overall_data).to_excel(writer, sheet_name="overall", index=False, header=False)
-        
-        # 2. K1
-        k1_data = [{"patentNumber": r["id"], "rep_ind_Claim": r["tooltip"]} for r in results.get("k1", [])]
-        pd.DataFrame(k1_data).to_excel(writer, sheet_name="K1", index=False)
-        
-        # 3. K3
-        k3_data = [{"patentNumber": r["id"], "chunkFromElement": r["tooltip"]} for r in results.get("k3", [])]
-        pd.DataFrame(k3_data).to_excel(writer, sheet_name="K3", index=False)
+
+        # 2. K1 — written directly for keyword highlighting support
+        ws_k1 = writer.book.add_worksheet('K1')
+        ws_k1.write(0, 0, 'patentNumber')
+        ws_k1.write(0, 1, 'rep_ind_Claim')
+        for i, r in enumerate(results.get("k1", [])):
+            ws_k1.write(i + 1, 0, r["id"])
+            _write_with_highlight(ws_k1, i + 1, 1, r["tooltip"], query_claim, highlight_fmt)
+
+        # 3. K3 — written directly for keyword highlighting support
+        ws_k3 = writer.book.add_worksheet('K3')
+        ws_k3.write(0, 0, 'patentNumber')
+        ws_k3.write(0, 1, 'chunkFromElement')
+        for i, r in enumerate(results.get("k3", [])):
+            ws_k3.write(i + 1, 0, r["id"])
+            _write_with_highlight(ws_k3, i + 1, 1, r["tooltip"], query_element, highlight_fmt)
         
         # 4. K2
         k2_list = results.get("k2", [])

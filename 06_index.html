@@ -143,6 +143,21 @@
     };
 
     let lastResults = null;
+    let currentQueryClaim = '';
+    let currentQueryElement = '';
+
+    function escapeHtml(s) {
+        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function highlightText(text, query) {
+        const safe = escapeHtml(text);
+        if (!query) return safe;
+        const words = [...new Set(query.split(/\W+/).filter(w => w.length > 1))];
+        if (!words.length) return safe;
+        const regex = new RegExp('(' + words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+        return safe.replace(regex, '<mark style="background:#FFFF00;padding:0 2px;border-radius:2px;">$1</mark>');
+    }
 
     DOM.file.addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -173,6 +188,8 @@
         DOM.claim.value = ''; DOM.element.value = ''; DOM.file.value = '';
         DOM.preview.src = ''; DOM.preview.style.display = 'none';
         lastResults = null;
+        currentQueryClaim = '';
+        currentQueryElement = '';
         Object.values(DOM.lists).forEach(l => l.innerHTML = '');
         DOM.exportBtn.style.display = 'none';
     });
@@ -180,6 +197,8 @@
     DOM.searchBtn.addEventListener('click', async () => {
         const claim = DOM.claim.value.trim(), element = DOM.element.value.trim(), image = DOM.file.files[0];
         if (!claim && !element && !image) return alert('검색할 텍스트 또는 도면을 입력해 주세요.');
+        currentQueryClaim = claim;
+        currentQueryElement = element;
 
         const formData = new FormData();
         if (claim) formData.append('query_claim', claim);
@@ -206,6 +225,8 @@
         const formData = new FormData();
         formData.append('input_text', `Claim: ${DOM.claim.value}\nElement: ${DOM.element.value}`);
         formData.append('input_image_name', DOM.file.files[0] ? DOM.file.files[0].name : "");
+        formData.append('query_claim', currentQueryClaim);
+        formData.append('query_element', currentQueryElement);
         formData.append('results_json', JSON.stringify(lastResults));
         try {
             const resp = await fetch(`${API_BASE}/export`, { method: 'POST', body: formData });
@@ -236,12 +257,19 @@
         const li = document.createElement('li');
         li.className = 'result-item';
         const displayId = isComb ? item.display_id : item.id;
-        li.innerHTML = `<span class="res-id" style="color:${color}">${displayId}</span><span class="res-score">${(item.score * 100).toFixed(1)}%</span>`;
+        const scoreText = (isComb && item.rrf_score !== undefined)
+            ? `RRF:${item.rrf_score.toFixed(4)} | ${(item.score * 100).toFixed(1)}%`
+            : `${(item.score * 100).toFixed(1)}%`;
+        li.innerHTML = `<span class="res-id" style="color:${color}">${displayId}</span><span class="res-score">${scoreText}</span>`;
         li.onmouseenter = (e) => {
             DOM.tooltip.style.display = 'block';
-            const imgUrl = item.tooltip.startsWith('/') ? `${API_BASE}${item.tooltip}` : item.tooltip;
-            if (isImg) DOM.tooltip.innerHTML = `<img src="${imgUrl}" onerror="this.src='https://via.placeholder.com/150?text=Error+Loading+Image'">`;
-            else DOM.tooltip.innerText = item.tooltip;
+            if (isImg) {
+                const imgUrl = item.tooltip.startsWith('/') ? `${API_BASE}${item.tooltip}` : item.tooltip;
+                DOM.tooltip.innerHTML = `<img src="${imgUrl}" onerror="this.src='https://via.placeholder.com/150?text=Error+Loading+Image'">`;
+            } else {
+                const q = item.type === 'claim' ? currentQueryClaim : item.type === 'element' ? currentQueryElement : null;
+                DOM.tooltip.innerHTML = highlightText(item.tooltip, q);
+            }
             moveTooltip(e);
         };
         li.onmousemove = moveTooltip;
