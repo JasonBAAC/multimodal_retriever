@@ -148,7 +148,7 @@ def parse_elements():
         
         # Update DB
         elements_json = json.dumps(final_elements, ensure_ascii=False)
-        chunks_json = json.dumps(list(unique_chunks), ensure_ascii=False)
+        chunks_json = json.dumps(sorted(unique_chunks), ensure_ascii=False)
         
         cursor.execute(f"UPDATE {TABLE_NAME} SET elementsFromDD = ?, chunkFromElement = ? WHERE rowid = ?", 
                        (elements_json, chunks_json, rowid))
