@@ -76,11 +76,11 @@ PTGRDT/*.tar (USPTO weekly archives)
   - `db3_elements.index` / `db3_meta.json` — extracted component name chunks (text)
 - **CLIP model** — `openai/clip-vit-large-patch14` (768-dim shared embedding space). Downloaded from HuggingFace on first run; cached under `~/.cache/huggingface/`.
 - **`05_multimodal_retriever.py`** — FastAPI backend. Loads all three indices and the CLIP model at startup. Serves:
-  - `POST /search` — claim + element + image multimodal search. When 2+ query types are active, computes **RRF (Reciprocal Rank Fusion, k=60)** scores and returns a deduplicated combined ranking (one entry per patent number, highest individual score kept as representative). Single-query mode sorts by cosine similarity.
+  - `POST /search` — claim + element + image multimodal search. `query_element` is normalized on arrival: comma-separated terms are sorted alphabetically (case-insensitive) before embedding. When 2+ query types are active, computes **RRF (Reciprocal Rank Fusion, k=60)** scores and returns a deduplicated combined ranking (one entry per patent number, highest individual score kept as representative). Single-query mode sorts by cosine similarity.
   - `GET /api/images/{filename}` — TIF→PNG conversion on the fly.
   - `POST /api/preview` — server-side image conversion for browser upload preview.
   - `POST /export` — Excel export with embedded K2 images, **yellow keyword highlighting** in K1/K3 claim/element text cells (`write_rich_string`), and RRF scores in the overall sheet.
-- **`06_index.html`** — Self-contained vanilla JS frontend (no build step). Talks to the backend via `fetch`. Results rendered in 3 colour-coded columns: red (K1 claims), green (K3 elements), blue (K2 images). Tooltips for K1/K3 highlight words matching the query input in yellow. Combined ranking shows bare patent numbers (no type suffix), with `RRF:x.xxxx | yy.y%` score when RRF is active.
+- **`06_index.html`** — Self-contained vanilla JS frontend (no build step). Talks to the backend via `fetch`. Results rendered in 3 colour-coded columns: red (K1 claims), green (K3 elements), blue (K2 images). Tooltips for K1/K3 highlight words matching the query input in yellow. Combined ranking shows bare patent numbers (no type suffix), with `RRF:x.xxxx | yy.y%` score when RRF is active. On search, the element textarea is sorted alphabetically by comma-separated terms and updated in place so the user sees the normalized input.
 
 ### CLIP Text Limit
 
