@@ -17,7 +17,22 @@ MODEL_ID = "openai/clip-vit-large-patch14"
 
 # Device setup
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using device: {device}")
+if torch.cuda.is_available():
+    device = "cuda"
+    device_name = torch.cuda.get_device_name(0)
+else:
+    try:
+        import torch_directml
+        if torch_directml.is_available():
+            device = torch_directml.device()
+            device_name = "DirectML (AMD/Intel GPU)"
+        else:
+            device_name = "CPU"
+            device = torch.device("cpu")
+    except ImportError:
+        device_name = "CPU"
+        device = torch.device("cpu")
+print(f"Using device: {device} ({device_name})")
 
 def setup_dirs():
     if not os.path.exists(INDEX_DIR):
@@ -135,7 +150,7 @@ def build_indices():
         combined_texts = []
         element_chunks = []
         for p_num, chunks_json in records:
-            chunks = json.loads(chunks_json)
+            chunks = [c.strip() for c in chunks_json.split(",") if c.strip()]
             if chunks:
                 combined_texts.append(" ".join(chunks))
                 patent_nums.append(p_num)
