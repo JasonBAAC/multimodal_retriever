@@ -49,8 +49,23 @@ metadata = {}
 
 def load_resources():
     global model, processor, indices, metadata
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Loading resources on {device}...")
+    #device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+        device_name = torch.cuda.get_device_name(0)
+    else:
+        try:
+            import torch_directml
+            if torch_directml.is_available():
+                device = torch_directml.device()
+                device_name = "DirectML (AMD/Intel GPU)"
+            else:
+                device_name = "CPU"
+                device = torch.device("cpu")
+        except ImportError:
+            device_name = "CPU"
+            device = torch.device("cpu")
+    print(f"Loading resources on {device_name}...")
     
     # 1. Load CLIP
     model = CLIPModel.from_pretrained(MODEL_ID).to(device)
@@ -291,9 +306,9 @@ async def export_results(
     results = json.loads(results_json)
     if query_element:
         query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
-    timestamp = datetime.now().strftime("%Y_%m_%d %H_%M_%S")
-    filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
-    filepath = os.path.join(os.getcwd(), filename)
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    xls_filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
+    filepath = os.path.join(os.getcwd(), xls_filename)
     
     with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:
         highlight_fmt = writer.book.add_format({'bg_color': '#FFFF00'})
@@ -348,7 +363,7 @@ async def export_results(
             else:
                 worksheet.write(i + 1, 2, "Image file not found")
 
-    return FileResponse(filepath, filename=filename, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return FileResponse(filepath, filename=xls_filename, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 if __name__ == "__main__":
     import uvicorn

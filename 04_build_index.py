@@ -16,7 +16,7 @@ INDEX_DIR = "index"
 MODEL_ID = "openai/clip-vit-large-patch14"
 
 # Device setup
-device = "cuda" if torch.cuda.is_available() else "cpu"
+#device = "cuda" if torch.cuda.is_available() else "cpu"
 if torch.cuda.is_available():
     device = "cuda"
     device_name = torch.cuda.get_device_name(0)
