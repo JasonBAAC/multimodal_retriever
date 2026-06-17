@@ -110,6 +110,23 @@ def extract_epatent_number(filename: str):
     match = re.search(r'US([^-]+)', filename)
     return match.group(1) if match else "Unknown"
 
+SKIP_WORDS = {
+    "FIG.", "FIGS.", "of", "for", "to", "than", "or", "and/or", "and",
+    "0", "1", "2", "3", "the", "a", "an", "is", "are", "was", "were",
+    "by", "with", "as", "in", "on", "at", "from", "that", "which",
+    "this", "these", "those", "it", "its", "be", "has", "have", "had",
+    "but", "not", "all", "any", "some", "other", "such", "no", "if",
+    "when", "while", "where", "who", "whom", "whose", ")", "(", "[",
+    "]", "{", "}", ".", ",", ";", ":", '"', "'", "-", "_", "%)", "Ref.",
+    "about", "Example", "example", "Examples", "examples"
+}
+_SKIP_LOWER = {w.lower() for w in SKIP_WORDS}
+
+def filter_skip_words(text: str) -> str:
+    words = text.split()
+    filtered = [w for w in words if w.strip(".,;:\"'()[]{}").lower() not in _SKIP_LOWER]
+    return " ".join(filtered)
+
 def compute_rrf(ranked_lists: list, k: int = 60) -> dict:
     scores = {}
     for lst in ranked_lists:
@@ -197,6 +214,13 @@ async def search(
         "combined": []
     }
     
+    # Filter skip words from query inputs
+    if query_claim:
+        query_claim = filter_skip_words(query_claim)
+    if query_element:
+        terms = [filter_skip_words(t.strip()) for t in query_element.split(",")]
+        query_element = ", ".join(sorted((t for t in terms if t), key=str.lower))
+
     # 1. Search DB1 (Claims)
     if query_claim and "db1" in indices:
         query_vec = get_text_embedding(query_claim)
@@ -213,10 +237,6 @@ async def search(
                 "suffix": "-claim",
                 "color": "red"
             })
-
-    # Normalize query_element: sort comma-separated terms alphabetically
-    if query_element:
-        query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
 
     # 2. Search DB3 (Elements)
     if query_element and "db3" in indices:
