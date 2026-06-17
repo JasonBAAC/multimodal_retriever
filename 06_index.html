@@ -242,7 +242,9 @@
             const blob = await resp.blob();
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
-            link.download = `Retrieval_${new Date().getTime()}_USPTO_LGD.xlsx`;
+            const now = new Date();
+            const ts = `${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}_${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}_${String(now.getMinutes()).padStart(2,'0')}_${String(now.getSeconds()).padStart(2,'0')}`;
+            link.download = `Retrieval_${ts}_USPTO_LGD.xlsx`;
             link.click();
         } catch (err) {
             alert('Excel 추출에 실패했습니다.');
@@ -267,7 +269,7 @@
         li.className = 'result-item';
         const displayId = isComb ? item.display_id : item.id;
         const scoreText = (isComb && item.rrf_score !== undefined)
-            ? `RRF:${item.rrf_score.toFixed(4)} | ${(item.score * 100).toFixed(1)}%`
+            ? `${item.hit_count || 1} | RRF:${item.rrf_score.toFixed(4)} | ${(item.score * 100).toFixed(1)}%`
             : `${(item.score * 100).toFixed(1)}%`;
         li.innerHTML = `<span class="res-id" style="color:${color}">${displayId}</span><span class="res-score">${scoreText}</span>`;
         li.onmouseenter = (e) => {

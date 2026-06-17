@@ -270,11 +270,16 @@ async def search(
         if results["k3"]: ranked_lists.append([r["id"] for r in results["k3"]])
         if results["k2"]: ranked_lists.append([r["epatent"] for r in results["k2"]])
         rrf_scores = compute_rrf(ranked_lists)
+        hit_counts = {}
+        for lst in ranked_lists:
+            for pid in set(lst):
+                hit_counts[pid] = hit_counts.get(pid, 0) + 1
         # Deduplicate by patent number; keep highest individual score per patent
         seen: dict = {}
         for item in combined_raw:
             pid = item["epatent"] if item["type"] == "image" else item["id"]
             item["rrf_score"] = round(rrf_scores.get(pid, 0.0), 6)
+            item["hit_count"] = hit_counts.get(pid, 1)
             if pid not in seen or item["score"] > seen[pid]["score"]:
                 seen[pid] = item
         combined = sorted(seen.values(), key=lambda x: x["rrf_score"], reverse=True)
@@ -283,6 +288,7 @@ async def search(
         seen = {}
         for item in combined_raw:
             pid = item["epatent"] if item["type"] == "image" else item["id"]
+            item["hit_count"] = 1
             if pid not in seen or item["score"] > seen[pid]["score"]:
                 seen[pid] = item
         combined = sorted(seen.values(), key=lambda x: x["score"], reverse=True)
@@ -306,7 +312,7 @@ async def export_results(
     results = json.loads(results_json)
     if query_element:
         query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    timestamp = datetime.now().strftime("%Y_%m_%dT%H_%M_%S")
     xls_filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
     filepath = os.path.join(os.getcwd(), xls_filename)
     
