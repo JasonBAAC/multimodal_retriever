@@ -3,6 +3,7 @@ annotated-types==0.7.0
 anyio==4.13.0
 certifi==2026.5.20
 click==8.4.1
+et_xmlfile==2.0.0
 faiss-gpu==1.14.3
 fastapi==0.137.1
 filelock==3.29.4
@@ -35,6 +36,7 @@ nvidia-cusparse-cu12==12.1.0.106
 nvidia-nccl-cu12==2.20.5
 nvidia-nvjitlink-cu12==12.9.86
 nvidia-nvtx-cu12==12.1.105
+openpyxl==3.1.5
 packaging==26.2
 pandas==3.0.3
 pillow==12.2.0

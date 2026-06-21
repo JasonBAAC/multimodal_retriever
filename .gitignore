@@ -42,7 +42,7 @@ US_patent_images/
 
 # 환경변수 파일
 .env
-*.env
+*.envpi
 
 # 로그 파일
 log/
