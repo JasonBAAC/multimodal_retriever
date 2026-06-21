@@ -71,6 +71,47 @@ python 91_extract_data.py --applicantName "Samsung Display" --aka "SDC" --dbName
 - **필터 조건**: `applicantCountry` 완전 일치 **AND** (`applicantName` 포함 **OR** `assigneeName` 포함)
 - 각 아카이브 처리 완료 후 `NNN case extracted!` 형식으로 신규 적재 건수 출력
 
+### 9x 파이프라인 실행 순서
+
+```bash
+# Step 91 — 대상 기업 필터링 인제스트 (steps 1a + 2 통합)
+python 91_extract_data.py
+
+# Step 92 — 특허 상세설명에서 구성요소명 추출 → {aka}_patent 테이블 업데이트
+python 92_parse_element.py
+
+# Step 93 — 도면 OCR → {aka}_drawing 테이블 생성
+python 93_ocr_drawing.py
+```
+
+**92_parse_element.py 인자:**
+
+| 인자 | 기본값 | 설명 |
+|------|--------|------|
+| `--dbName` | `US_patent` | SQLite DB 파일명 |
+| `--aka` | `LGD` | 약칭 → 테이블명 `{aka}_patent` |
+
+추가 컬럼: `elementsFromDD` (JSON dict: ref→name), `chunkFromElementDD` (정렬된 고유 name 쉼표 구분 문자열)
+
+**93_ocr_drawing.py 인자:**
+
+| 인자 | 기본값 | 설명 |
+|------|--------|------|
+| `--dbName` | `US_patent` | SQLite DB 파일명 |
+| `--aka` | `LGD` | 약칭 → 이미지 테이블 `{aka}_drawing`, 특허 테이블 `{aka}_patent` |
+| `--imageFolder` | `Patent_images` | TIF 저장 상위 폴더 |
+
+**`{aka}_drawing` 테이블 스키마:**
+
+| 필드 | 설명 |
+|------|------|
+| `patentNumber` | 파일명 중 `US`와 첫 번째 `-` 사이 값 |
+| `grantDate` | 파일명 중 첫 번째 `-`와 두 번째 `-` 사이 값 (`YYYY-MM-DD`) |
+| `drawing_file_name` | TIF 파일명 |
+| `numericFromDR` | OCR로 추출한 참조번호 리스트 (JSON) |
+| `elementsFromDR` | `numericFromDR`과 `elementsFromDD` key 매칭 결과 딕셔너리 (JSON) |
+| `chunkFromElementDR` | `elementsFromDR` value 기반 정렬된 고유 name 쉼표 구분 문자열 |
+
 ## Architecture
 
 ### Data Flow
@@ -136,6 +177,12 @@ Columns added by step 3: `elementsFromDD` (JSON dict of ref→name), `chunkFromE
 
 ## Environment
 
-The project uses a local venv (`pyvenv.cfg` in the project root). Key packages from `requirements.txt`: `fastapi`, `uvicorn`, `transformers`, `torch`, `faiss-cpu`, `pillow`, `lxml`, `pandas`, `xlsxwriter`, `openpyxl`, `nltk`.
+The project uses a local venv (`pyvenv.cfg` in the project root). Key packages from `requirements.txt`: `fastapi`, `uvicorn`, `transformers`, `torch`, `faiss-cpu`, `pillow`, `lxml`, `pandas`, `xlsxwriter`, `openpyxl`, `nltk`, `pytesseract`.
+
+`93_ocr_drawing.py`는 추가로 시스템에 Tesseract OCR 엔진이 설치되어 있어야 합니다:
+```bash
+sudo apt install tesseract-ocr   # Ubuntu/WSL
+pip install pytesseract
+```
 
 Python version: 3.13 (conda base) or the local venv. The venv is activated automatically when running scripts from this directory.

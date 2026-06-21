@@ -1,6 +1,8 @@
 import sqlite3
 import re
 import json
+import os
+import argparse
 from collections import Counter
 import nltk
 from nltk.tag import pos_tag
@@ -9,21 +11,32 @@ from nltk.tag import pos_tag
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('averaged_perceptron_tagger_eng', quiet=True)
 
-# Configuration
-DB_NAME = "USPTO_zip_data.db"
-TABLE_NAME = "USPTO_LGD"
+ARGS_FILE = "90_args.txt"
 word_span = 5
 
-def setup_db():
-    conn = sqlite3.connect(DB_NAME)
+
+def load_args_file():
+    saved = {}
+    if not os.path.exists(ARGS_FILE):
+        return saved
+    with open(ARGS_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if '=' in line:
+                key, _, val = line.partition('=')
+                saved[key.strip()] = val.strip().strip("'\"")
+    return saved
+
+
+def setup_db(db_name, table_name):
+    conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
-    # Add new columns if they don't exist
-    new_cols = ["elementsFromDD", "chunkFromElement"]
+    new_cols = ["elementsFromDD", "chunkFromElementDD"]
     for col in new_cols:
         try:
-            cursor.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN {col} TEXT")
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} TEXT")
         except sqlite3.OperationalError:
-            pass # Already exists
+            pass
     conn.commit()
     return conn
 
@@ -62,13 +75,12 @@ def find_common_prefix(strings):
     # Fallback to the shortest string if no perfect common suffix
     return min(strings, key=len)
 
-def parse_elements():
-    conn = setup_db()
+def parse_elements(db_name, table_name):
+    conn = setup_db(db_name, table_name)
     cursor = conn.cursor()
-    
-    # Fetch all records from USPTO_LGD
-    print(f"Fetching all records from {TABLE_NAME}...")
-    cursor.execute(f"SELECT rowid, patentNumber, detailedDescription FROM {TABLE_NAME}")
+
+    print(f"Fetching all records from {table_name} ({db_name})...")
+    cursor.execute(f"SELECT rowid, patentNumber, detailedDescription FROM {table_name}")
     rows = cursor.fetchall()
     
     # Reference character pattern: number+optional letter (e.g., 230, 102a) or 1–5 consecutive uppercase letters (e.g., LCD, OLED)
@@ -87,7 +99,7 @@ def parse_elements():
         
         elements_map = {} # { "230": ["and a second active layer", ...] }
         
-        skip_words = {"FIG.", "FIGS.", "Ref.", "Embodiment", "embodiment", "Result", "Table", "TABLE", "table", ".", ",", "Example","example","Examples","examples", "of", "OF", "DESCRIPTIOIN", "description", "THE", "the", "mini"}
+        skip_words = {"FIG.", "FIGS.", "Ref.", "Equation", "Embodiment", "embodiment", "Result", "Table", "TABLE", "table", ".", ",", "Example","example","Examples","examples", "of", "OF", "DESCRIPTIOIN", "description", "THE", "the", "mini"}
         
         stop_words = {"of", "for", "to", "than", "or", "and/or", "and", "0", "1", "2", "3", "the", "a", "an", "is", "are", "was", "were", "by", "with", "as", "in", "on", "at", "from", "that", "which", "this", "these", "those", "it", "its", "be", "has", "have", "had", "but", "not", "all", "any", "some", "other", "such", "no", "if", "when", "while", "where", "who", "whom", "whose", ")", "(", "[", "]", "{", "}", ".", ",", ";", ":", "\"", "'", "-", "_", "%)", "about"}
 
@@ -150,7 +162,7 @@ def parse_elements():
         elements_json = json.dumps(final_elements, ensure_ascii=False)
         chunks_json = ", ".join(sorted(unique_chunks))
         
-        cursor.execute(f"UPDATE {TABLE_NAME} SET elementsFromDD = ?, chunkFromElement = ? WHERE rowid = ?", 
+        cursor.execute(f"UPDATE {table_name} SET elementsFromDD = ?, chunkFromElementDD = ? WHERE rowid = ?",
                        (elements_json, chunks_json, rowid))
         
         print(f"  - Extracted {len(final_elements)} unique elements.")
@@ -160,4 +172,14 @@ def parse_elements():
     print("\nElement parsing for entire records complete.")
 
 if __name__ == "__main__":
-    parse_elements()
+    saved = load_args_file()
+
+    parser = argparse.ArgumentParser(description="USPTO Patent Element Parser")
+    parser.add_argument("--dbName", default=saved.get('dbName', 'US_patent'))
+    parser.add_argument("--aka",    default=saved.get('aka',    'LGD'))
+    args = parser.parse_args()
+
+    db_file    = args.dbName if args.dbName.endswith('.db') else args.dbName + '.db'
+    table_name = args.aka + '_patent'
+
+    parse_elements(db_file, table_name)
