@@ -82,6 +82,12 @@ python 92_parse_element.py
 
 # Step 93 — 도면 OCR → {aka}_drawing 테이블 생성
 python 93_ocr_drawing.py
+
+# Step 94 — FAISS 벡터 인덱스 구축
+python 94_build_index.py
+
+# Step 95 — FastAPI 검색 서버 실행 (UI: 96_index.html)
+python 95_retrieve_patent.py
 ```
 
 **92_parse_element.py 인자:**
@@ -100,6 +106,31 @@ python 93_ocr_drawing.py
 | `--dbName` | `US_patent` | SQLite DB 파일명 |
 | `--aka` | `LGD` | 약칭 → 이미지 테이블 `{aka}_drawing`, 특허 테이블 `{aka}_patent` |
 | `--imageFolder` | `Patent_images` | TIF 저장 상위 폴더 |
+
+**94_build_index.py 인자:**
+
+| 인자 | 기본값 | 설명 |
+|------|--------|------|
+| `--dbName` | `US_patent` | SQLite DB 파일명 |
+| `--aka` | `LGD` | 약칭 |
+| `--imageFolder` | `Patent_images` | 이미지 상위 폴더 |
+| `--indexFolder` | `index_{aka}` | FAISS 인덱스 저장 폴더 (기본: `index_LGD`) |
+
+- **DB1**: `{aka}_patent.rep_ind_Claim` → 텍스트 임베딩
+- **DB2**: `{imageFolder}/{aka}/` 내 TIF 파일 → 이미지 임베딩
+- **DB3**: `{aka}_drawing.chunkFromElementDR` → 텍스트 임베딩
+
+**95_retrieve_patent.py 인자:**
+
+| 인자 | 기본값 | 설명 |
+|------|--------|------|
+| `--dbName` | `US_patent` | SQLite DB 파일명 |
+| `--aka` | `LGD` | 약칭 (Excel 파일명에 반영) |
+| `--imageFolder` | `Patent_images` | 이미지 상위 폴더 |
+| `--indexFolder` | `index_{aka}` | FAISS 인덱스 로드 폴더 |
+
+- 서버 시작 시 `90_args.txt`에서 설정 읽음 (`parse_known_args`로 uvicorn 인자 충돌 방지)
+- UI: `96_index.html` / Excel 파일명: `MultimodalRetrieval_YYYYMMDDThhmmss_US_{aka}.xlsx`
 
 **`{aka}_drawing` 테이블 스키마:**
 
@@ -131,20 +162,24 @@ PTGRDT/*.tar (USPTO weekly archives)
                                          ┌────────────────┴────────────────┐
                                    {aka}_patent table        {imageFolder}/{aka}/
                                          │
-                             (방법 A·B 공통)
-                                         │
-                             03_element_parser*.py
-                             (adds elementsFromDD, chunkFromElement columns)
-                                         │
-                              04_build_index.py
-                                         │
-                     ┌───────────────────┼────────────────────┐
-               index/db1_claims      db2_images          db3_elements
-               (.index + .json)
-                                         │
-                          05_multimodal_retriever.py (FastAPI)
-                                         │
-                               06_index.html (UI)
+                   ┌─────────────────────┴──────────────────────┐
+              [방법 A]                                       [방법 B]
+         03_element_parser*.py                        92_parse_element.py
+    (USPTO_LGD.elementsFromDD,                  ({aka}_patent.elementsFromDD,
+      chunkFromElement)                            chunkFromElementDD)
+                 │                                           │
+         04_build_index.py                        93_ocr_drawing.py
+    (index/ ← USPTO_LGD 기반)              ({aka}_drawing 테이블 생성,
+                 │                           numericFromDR, elementsFromDR,
+                 │                           chunkFromElementDR)
+                 │                                           │
+                 │                               94_build_index.py
+                 │                      (index_{aka}/ ← {aka}_patent + {aka}_drawing)
+                 │                                           │
+          05_multimodal_retriever.py            95_retrieve_patent.py (FastAPI)
+          (index/ · US_patent_images/)          (index_{aka}/ · {imageFolder}/{aka}/)
+                 │                                           │
+          06_index.html (UI)                      96_index.html (UI)
 ```
 
 ### Key Components

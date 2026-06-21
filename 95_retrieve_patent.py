@@ -1,6 +1,7 @@
 import os
 import json
 import sqlite3
+import argparse
 import torch
 import numpy as np
 import faiss
@@ -17,11 +18,37 @@ from datetime import datetime
 import pandas as pd
 from contextlib import asynccontextmanager
 
-# Configuration
-DB_NAME = "USPTO_zip_data.db"
-INDEX_DIR = "index"
-IMAGE_DIR = os.path.join("US_patent_images", "LGD")
+ARGS_FILE = "90_args.txt"
 MODEL_ID = "openai/clip-vit-large-patch14"
+
+
+def _load_args_file():
+    saved = {}
+    if not os.path.exists(ARGS_FILE):
+        return saved
+    with open(ARGS_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if '=' in line:
+                key, _, val = line.partition('=')
+                saved[key.strip()] = val.strip().strip("'\"")
+    return saved
+
+
+# Parse config at module level (parse_known_args avoids conflicts with uvicorn args)
+_saved = _load_args_file()
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--dbName",      default=_saved.get('dbName',      'US_patent'))
+_parser.add_argument("--aka",         default=_saved.get('aka',         'LGD'))
+_parser.add_argument("--imageFolder", default=_saved.get('imageFolder', 'Patent_images'))
+_parser.add_argument("--indexFolder", default=None)
+_cfg, _ = _parser.parse_known_args()
+if _cfg.indexFolder is None:
+    _cfg.indexFolder = f"index_{_cfg.aka}"
+
+AKA       = _cfg.aka
+INDEX_DIR = _cfg.indexFolder
+IMAGE_DIR = os.path.join(_cfg.imageFolder, _cfg.aka)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -319,7 +346,7 @@ async def search(
 
 @app.get("/")
 async def read_index():
-    return FileResponse("06_index.html")
+    return FileResponse("96_index.html")
 
 @app.post("/export")
 async def export_results(
@@ -332,8 +359,8 @@ async def export_results(
     results = json.loads(results_json)
     if query_element:
         query_element = ", ".join(sorted((s.strip() for s in query_element.split(",") if s.strip()), key=str.lower))
-    timestamp = datetime.now().strftime("%Y_%m_%dT%H_%M_%S")
-    xls_filename = f"Retrieval_{timestamp}_USPTO_LGD.xlsx"
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    xls_filename = f"MultimodalRetrieval_{timestamp}_US_{AKA}.xlsx"
     filepath = os.path.join(os.getcwd(), xls_filename)
     
     with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:

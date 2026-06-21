@@ -84,7 +84,7 @@ def parse_elements(db_name, table_name):
     rows = cursor.fetchall()
     
     # Reference character pattern: number+optional letter (e.g., 230, 102a) or 1–5 consecutive uppercase letters (e.g., LCD, OLED)
-    ref_pattern = re.compile(r'\b(\d+[a-zA-Z]?|[A-Z]{1,5})\b')
+    ref_pattern = re.compile(r'\b(\d+[a-zA-Z]?|[A-Z]{1,5}\d*)\b')
 
     for rowid, p_num, dd in rows:
         if not dd:

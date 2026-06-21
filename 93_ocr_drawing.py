@@ -14,7 +14,7 @@ DRAWING_FIELDS = [
     "numericFromDR", "elementsFromDR", "chunkFromElementDR"
 ]
 
-REF_PATTERN = re.compile(r'\b(\d+[a-zA-Z]?)\b')
+REF_PATTERN = re.compile(r'\b(\d+[a-zA-Z]?|[A-Z]{1,5}\d*)\b')
 
 
 def load_args_file():
