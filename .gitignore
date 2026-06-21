@@ -35,6 +35,7 @@ build/
 index/
 PTGRDT/
 US_patent_images/
+Patent_images/
 
 # IDE
 .vscode/
