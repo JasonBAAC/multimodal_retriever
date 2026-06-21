@@ -156,10 +156,11 @@ def build_indices(db_file, patent_table, image_table, image_dir, index_dir):
         print(f"  Image directory not found: {image_dir}")
 
     # 3. DB3: Elements — {aka}_drawing 테이블의 chunkFromElementDR
+    #    chunkFromElementDR가 비어 있는 행은 임베딩 skip
     print("\nBuilding DB3 (Elements from Drawings)...")
     cursor.execute(
         f"SELECT patentNumber, chunkFromElementDR FROM {image_table} "
-        f"WHERE chunkFromElementDR IS NOT NULL AND chunkFromElementDR != ''"
+        f"WHERE chunkFromElementDR IS NOT NULL AND TRIM(chunkFromElementDR) != ''"
     )
     records = cursor.fetchall()
     if records:
@@ -168,10 +169,11 @@ def build_indices(db_file, patent_table, image_table, image_dir, index_dir):
         element_chunks = []
         for p_num, chunks_str in records:
             chunks = [c.strip() for c in chunks_str.split(",") if c.strip()]
-            if chunks:
-                combined_texts.append(" ".join(chunks))
-                patent_nums.append(p_num)
-                element_chunks.append(chunks)
+            if not chunks:          # 파싱 후에도 유효 청크 없으면 skip
+                continue
+            combined_texts.append(" ".join(chunks))
+            patent_nums.append(p_num)
+            element_chunks.append(chunks)
 
         if combined_texts:
             embeddings = get_text_embeddings(model, processor, combined_texts)

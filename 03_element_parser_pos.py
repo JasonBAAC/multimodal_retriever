@@ -86,16 +86,57 @@ def parse_elements():
         tokens = dd.split()
         
         elements_map = {} # { "230": ["and a second active layer", ...] }
-        
+
+        after_words = {
+            # 길이 (Length)
+            "nm", "μm", "um", "mm", "cm", "km", "Å", "angstrom", "in", "ft", "yd",
+            # 질량 (Mass)
+            "mg", "kg", "μg", "ug", "lb", "oz",
+            # 시간 (Time)
+            "ms", "μs", "us", "ns", "ps", "fs", "min", "hr",
+            # 주파수 (Frequency)
+            "Hz", "kHz", "MHz", "GHz", "THz",
+            # 전압 (Voltage)
+            "mV", "kV", "μV", "uV",
+            # 전류 (Current)
+            "mA", "μA", "uA", "nA", "pA",
+            # 전력 (Power)
+            "mW", "kW", "MW", "GW",
+            # 에너지 (Energy)
+            "kJ", "MJ", "eV", "keV", "MeV", "cal", "kcal",
+            # 압력 (Pressure)
+            "Pa", "kPa", "MPa", "GPa", "atm", "bar", "psi", "torr",
+            # 저항 (Resistance)
+            "Ω", "ohm", "kΩ", "MΩ",
+            # 커패시턴스 (Capacitance)
+            "μF", "nF", "pF", "fF",
+            # 인덕턴스 (Inductance)
+            "μH", "nH", "mH",
+            # 자기 (Magnetic)
+            "mT", "μT", "Wb",
+            # 각도 (Angle)
+            "deg", "rad", "mrad",
+            # 비율 / 농도 (Ratio / Concentration)
+            "%", "ppm", "ppb", "wt%", "vol%", "mol%",
+            # 데이터 (Data)
+            "KB", "MB", "GB", "TB", "bps", "kbps", "Mbps",
+            # 기타 (Other)
+            "rpm", "dB", "dBm", "lm", "lx", "sccm", "slm",
+        }
+
         skip_words = {"FIG.", "FIGS.", "Ref.", "Embodiment", "embodiment", "Result", "Table", "TABLE", "table", ".", ",", "Example","example","Examples","examples", "of", "OF", "DESCRIPTIOIN", "description", "THE", "the", "mini"}
-        
+
         stop_words = {"of", "for", "to", "than", "or", "and/or", "and", "0", "1", "2", "3", "the", "a", "an", "is", "are", "was", "were", "by", "with", "as", "in", "on", "at", "from", "that", "which", "this", "these", "those", "it", "its", "be", "has", "have", "had", "but", "not", "all", "any", "some", "other", "such", "no", "if", "when", "while", "where", "who", "whom", "whose", ")", "(", "[", "]", "{", "}", ".", ",", ";", ":", "\"", "'", "-", "_", "%)", "about"}
 
         for i, token in enumerate(tokens):
             match = ref_pattern.fullmatch(token)
             if match:
                 ref_char = match.group(1)
-                
+
+                # Filter 0: 바로 뒤 단어가 계량 단위이면 측정값으로 간주하여 무시
+                if i + 1 < len(tokens) and tokens[i + 1].strip(".,;:()") in after_words:
+                    continue
+
                 # Filter 1: Check immediately preceding word against skip_words
                 if i > 0 and tokens[i-1].strip(",") in skip_words:
                     continue
