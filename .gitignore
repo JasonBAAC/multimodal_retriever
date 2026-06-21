@@ -33,6 +33,7 @@ dist/
 build/
 *.egg-info/
 index/
+index2/
 PTGRDT/
 US_patent_images/
 Patent_images/

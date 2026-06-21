@@ -294,7 +294,7 @@ def process_tar(tar_path, conn, args, table_name):
                             already_exists_count += 1
                 except Exception:
                     pass
-            print(f"  {extracted_count:03d} case extracted!")
+            print(f"  {extracted_count:05d} case extracted!")
     except Exception as e:
         print(f"Error opening TAR {tar_filename}: {e}")
 
