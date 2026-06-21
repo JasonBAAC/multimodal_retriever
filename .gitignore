@@ -47,6 +47,8 @@ US_patent_images/
 # 로그 파일
 log/
 *.log
+nohup.out
+
 
 # DB 파일
 *.sqlite3

@@ -71,9 +71,8 @@ def parse_elements():
     cursor.execute(f"SELECT rowid, patentNumber, detailedDescription FROM {TABLE_NAME}")
     rows = cursor.fetchall()
     
-    # Reference character pattern: Number or Number+Letter (e.g., 230, 230a, 230A)
-    # Usually, it's a standalone word or at the end of a sentence
-    ref_pattern = re.compile(r'\b(\d+[a-zA-Z]?)\b')
+    # Reference character pattern: number+optional letter (e.g., 230, 102a) or 1–5 consecutive uppercase letters (e.g., LCD, OLED)
+    ref_pattern = re.compile(r'\b(\d+[a-zA-Z]?|[A-Z]{1,5})\b')
 
     for rowid, p_num, dd in rows:
         if not dd:
@@ -88,48 +87,49 @@ def parse_elements():
         
         elements_map = {} # { "230": ["and a second active layer", ...] }
         
-        skip_words = {"FIG.", "FIGS.", "of", "for", "to", "than", "or", "and/or", "and", "0", "1", "2", "3", "the", "a", "an", "is", "are", "was", "were", "by", "with", "as", "in", "on", "at", "from", "that", "which", "this", "these", "those", "it", "its", "be", "has", "have", "had", "but", "not", "all", "any", "some", "other", "such", "no", "if", "when", "while", "where", "who", "whom", "whose", ")", "(", "[", "]", "{", "}", ".", ",", ";", ":", "\"", "'", "-", "_", "%)", "Ref.", "about", "Example","example","Examples","examples"}
+        skip_words = {"FIG.", "FIGS.", "Ref.", "Embodiment", "embodiment", "Result", "Table", "TABLE", "table", ".", ",", "Example","example","Examples","examples", "of", "OF", "DESCRIPTIOIN", "description", "THE", "the", "mini"}
         
+        stop_words = {"of", "for", "to", "than", "or", "and/or", "and", "0", "1", "2", "3", "the", "a", "an", "is", "are", "was", "were", "by", "with", "as", "in", "on", "at", "from", "that", "which", "this", "these", "those", "it", "its", "be", "has", "have", "had", "but", "not", "all", "any", "some", "other", "such", "no", "if", "when", "while", "where", "who", "whom", "whose", ")", "(", "[", "]", "{", "}", ".", ",", ";", ":", "\"", "'", "-", "_", "%)", "about"}
+
         for i, token in enumerate(tokens):
             match = ref_pattern.fullmatch(token)
             if match:
                 ref_char = match.group(1)
                 
-                # Check immediately preceding word
+                # Filter 1: Check immediately preceding word against skip_words
                 if i > 0 and tokens[i-1].strip(",") in skip_words:
                     continue
-                
-                # Get preceding words (word_span)
+
+                # Filter 2: Extract preceding words (word_span), POS tag, keep allowed-POS words only
                 start_idx = max(0, i - word_span)
                 preceding_words = tokens[start_idx:i]
-                
+
                 if preceding_words:
-                    # New Logic: If a skip_word is found in the span, delete up to that word
-                    # We look for the last occurrence of any skip word in the list
-                    last_skip_idx = -1
-                    for idx, w in enumerate(preceding_words):
-                        if w.strip(".,") in skip_words:
-                            last_skip_idx = idx
-                    
-                    if last_skip_idx != -1:
-                        preceding_words = preceding_words[last_skip_idx + 1:]
-                    
-                    if not preceding_words:
-                        continue
-                    
-                    # NLTK POS Tagging Filter
                     word_tags = pos_tag(preceding_words)
                     allowed_pos = {"JJ", "NN", "NNS", "NNP", "NNPS", "RB", "VBG", "VBN", "VBP"}
-                    if not all(tag in allowed_pos for word, tag in word_tags):
-                        continue
-                        
-                    context = " ".join(preceding_words)
-                    # Clean context (remove leading punctuation/stop words)
-                    context = re.sub(r'^[^\w]+', '', context).strip()
-                    
-                    if ref_char not in elements_map:
-                        elements_map[ref_char] = []
-                    elements_map[ref_char].append(context)
+                    preceding_words = [word for word, tag in word_tags if tag in allowed_pos]
+
+                if not preceding_words:
+                    continue
+
+                # Filter 3: Find last stop_word in POS-filtered words, keep only what follows
+                last_stop_idx = -1
+                for idx, w in enumerate(preceding_words):
+                    if w.strip(".,") in stop_words:
+                        last_stop_idx = idx
+
+                if last_stop_idx != -1:
+                    preceding_words = preceding_words[last_stop_idx + 1:]
+
+                if not preceding_words:
+                    continue
+
+                context = " ".join(preceding_words)
+                context = re.sub(r'^[^\w]+', '', context).strip()
+
+                if ref_char not in elements_map:
+                    elements_map[ref_char] = []
+                elements_map[ref_char].append(context)
         
         # Deduplicate and find common names
         final_elements = {}
