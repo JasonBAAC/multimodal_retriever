@@ -223,13 +223,19 @@ def _is_valid_member(name, base_prefix):
 
 
 def _is_target(data, applicant_name, assignee_name, applicant_country):
-    """applicantCountry 일치 + (applicantName 포함 또는 assigneeName 포함) 조건 확인."""
+    """applicantCountry 일치 + (applicantName 포함 또는 assigneeName 포함) 조건 확인.
+    applicant_name / assignee_name 은 쉼표로 구분된 복수 패턴을 지원합니다.
+    예: --assigneeName "LG Display,LG.Philips"
+    """
     country = data.get("applicantCountry") or ""
     app_name = data.get("applicantName") or ""
     asgn_name = data.get("assigneeName") or ""
     if country != applicant_country:
         return False
-    return (applicant_name in app_name) or (assignee_name in asgn_name)
+    app_patterns  = [p.strip() for p in applicant_name.split(",") if p.strip()]
+    asgn_patterns = [p.strip() for p in assignee_name.split(",") if p.strip()]
+    return (any(p in app_name  for p in app_patterns) or
+            any(p in asgn_name for p in asgn_patterns))
 
 
 def process_inner_zip(z, conn, args, table_name):
