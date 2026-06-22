@@ -208,7 +208,11 @@ def extract_xml_data(xml_content):
 
 
 def _is_valid_member(name, base_prefix):
-    parts = name.replace("\\", "/").split("/")
+    # Strip leading "./" that older USPTO ZIPs prepend to all member paths
+    normalized = name.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    parts = normalized.split("/")
     if len(parts) < 3:
         return False
     if parts[0] != base_prefix:
@@ -347,10 +351,14 @@ def process_pipeline(args):
 
     conn = setup_db(db_file, table_name)
 
-    archives = (
-        glob.glob(os.path.join(args.sourceFolder, "*.tar")) +
-        glob.glob(os.path.join(args.sourceFolder, "*.zip"))
-    )
+    # Collect archives; include uppercase extensions for Linux case-sensitive filesystems
+    seen = set()
+    archives = []
+    for pattern in ("*.tar", "*.TAR", "*.zip", "*.ZIP"):
+        for path in glob.glob(os.path.join(args.sourceFolder, pattern)):
+            if path not in seen:
+                seen.add(path)
+                archives.append(path)
 
     if args.grantDate:
         archives = [f for f in archives if args.grantDate in os.path.basename(f)]
