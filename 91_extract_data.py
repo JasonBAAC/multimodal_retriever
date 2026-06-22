@@ -208,16 +208,18 @@ def extract_xml_data(xml_content):
 
 
 def _is_valid_member(name, base_prefix):
-    # Strip leading "./" that older USPTO ZIPs prepend to all member paths
+    # Normalize separators and strip leading "./"
     normalized = name.replace("\\", "/")
     if normalized.startswith("./"):
         normalized = normalized[2:]
     parts = normalized.split("/")
-    if len(parts) < 3:
-        return False
-    if parts[0] != base_prefix:
-        return False
-    return parts[1] == "REISSUE" or parts[1].startswith("UTIL")
+    # base_prefix may appear at any depth (e.g. "project/pdds/ICEwithdraw/I20100105/UTIL.../")
+    # Find it and check that the immediately following directory is UTIL* or REISSUE
+    for i, part in enumerate(parts):
+        if part == base_prefix and i + 1 < len(parts):
+            subdir = parts[i + 1]
+            return subdir == "REISSUE" or subdir.startswith("UTIL")
+    return False
 
 
 def _is_target(data, applicant_name, assignee_name, applicant_country):
