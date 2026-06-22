@@ -228,44 +228,54 @@ def _is_target(data, applicant_name, assignee_name, applicant_country):
 
 def process_inner_zip(z, conn, args, table_name):
     """
-    Returns:
-        True  — 새로 삽입됨
-        False — 이미 DB에 존재 (already_exists 카운트 증가용)
-        None  — XML 없음 / 파싱 실패 / 대상 기업 아님 (무시)
+    Recursively process a ZIP. Returns (inserted_count, exists_count).
+    If the ZIP contains an XML directly, treat it as a leaf patent ZIP.
+    Otherwise recurse into any nested ZIPs to find patents deeper in the tree.
     """
     namelist = z.namelist()
     xml_file = next((f for f in namelist if f.lower().endswith(".xml")), None)
-    if not xml_file:
-        return None
 
-    xml_content = z.read(xml_file).decode('utf-8', errors='ignore')
-    data = extract_xml_data(xml_content)
-    if not data:
-        return None
+    if xml_file:
+        xml_content = z.read(xml_file).decode('utf-8', errors='ignore')
+        data = extract_xml_data(xml_content)
+        if not data:
+            return (0, 0)
+        if not _is_target(data, args.applicantName, args.assigneeName, args.applicantCountry):
+            return (0, 0)
 
-    if not _is_target(data, args.applicantName, args.assigneeName, args.applicantCountry):
-        return None
+        p_num = data["patentNumber"]
+        if patent_exists(conn, p_num, table_name):
+            return (0, 1)
 
-    p_num = data["patentNumber"]
-    if patent_exists(conn, p_num, table_name):
-        return False
+        cursor = conn.cursor()
+        placeholders = ", ".join(["?" for _ in DB_FIELDS])
+        cursor.execute(
+            f"INSERT INTO {table_name} VALUES ({placeholders})",
+            [data[f] for f in DB_FIELDS]
+        )
+        conn.commit()
 
-    cursor = conn.cursor()
-    placeholders = ", ".join(["?" for _ in DB_FIELDS])
-    cursor.execute(
-        f"INSERT INTO {table_name} VALUES ({placeholders})",
-        [data[f] for f in DB_FIELDS]
-    )
-    conn.commit()
+        image_dir = os.path.join(args.imageFolder, args.aka)
+        os.makedirs(image_dir, exist_ok=True)
+        for f in namelist:
+            if f.lower().endswith(".tif"):
+                with open(os.path.join(image_dir, os.path.basename(f)), 'wb') as out_f:
+                    out_f.write(z.read(f))
 
-    image_dir = os.path.join(args.imageFolder, args.aka)
-    os.makedirs(image_dir, exist_ok=True)
-    for f in namelist:
-        if f.lower().endswith(".tif"):
-            with open(os.path.join(image_dir, os.path.basename(f)), 'wb') as out_f:
-                out_f.write(z.read(f))
+        return (1, 0)
 
-    return True
+    # No XML at this level — recurse into nested ZIPs
+    total_inserted, total_exists = 0, 0
+    for fname in namelist:
+        if fname.lower().endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(z.read(fname))) as inner_z:
+                    ins, ex = process_inner_zip(inner_z, conn, args, table_name)
+                    total_inserted += ins
+                    total_exists += ex
+            except Exception:
+                pass
+    return (total_inserted, total_exists)
 
 
 def process_tar(tar_path, conn, args, table_name):
@@ -291,11 +301,9 @@ def process_tar(tar_path, conn, args, table_name):
                     continue
                 try:
                     with zipfile.ZipFile(io.BytesIO(zip_data_file.read())) as z:
-                        result = process_inner_zip(z, conn, args, table_name)
-                        if result is True:
-                            extracted_count += 1
-                        elif result is False:
-                            already_exists_count += 1
+                        ins, ex = process_inner_zip(z, conn, args, table_name)
+                        extracted_count += ins
+                        already_exists_count += ex
                 except Exception:
                     pass
             print(f"  {extracted_count:05d} case extracted!")
@@ -323,11 +331,9 @@ def process_zip(zip_path, conn, args, table_name):
                     break
                 try:
                     with zipfile.ZipFile(io.BytesIO(outer_zip.read(member))) as z:
-                        result = process_inner_zip(z, conn, args, table_name)
-                        if result is True:
-                            extracted_count += 1
-                        elif result is False:
-                            already_exists_count += 1
+                        ins, ex = process_inner_zip(z, conn, args, table_name)
+                        extracted_count += ins
+                        already_exists_count += ex
                 except Exception:
                     pass
             print(f"  {extracted_count:03d} case extracted!")
