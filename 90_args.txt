@@ -1,4 +1,4 @@
-sourceFolder='PTGRDT'
+sourceFolder='PTGRD2'
 applicantName='LG Display'
 aka='LGD'
 applicantCountry='KR'

@@ -130,7 +130,11 @@ def extract_xml_data(xml_content):
 
         data["numberOfFigures"] = biblio.findtext('.//figures/number-of-figures')
 
-        applicant = biblio.find('.//us-parties/us-applicants/us-applicant/addressbook')
+        # v4.4+ path first; fall back to v4.2/v4.3 path used in pre-2013 grants
+        applicant = (
+            biblio.find('.//us-parties/us-applicants/us-applicant/addressbook') or
+            biblio.find('.//parties/applicants/applicant/addressbook')
+        )
         if applicant is not None:
             data["applicantName"] = applicant.findtext('orgname')
             data["applicantCountry"] = applicant.findtext('.//country')
