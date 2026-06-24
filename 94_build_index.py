@@ -194,14 +194,12 @@ if __name__ == "__main__":
     saved = load_args_file()
 
     parser = argparse.ArgumentParser(description="USPTO Patent FAISS Index Builder")
+    default_aka = saved.get('aka', 'LGD')
     parser.add_argument("--dbName",      default=saved.get('dbName',      'US_patent'))
-    parser.add_argument("--aka",         default=saved.get('aka',         'LGD'))
+    parser.add_argument("--aka",         default=default_aka)
     parser.add_argument("--imageFolder", default=saved.get('imageFolder', 'Patent_images'))
-    parser.add_argument("--indexFolder", default=None)
+    parser.add_argument("--indexFolder", default=saved.get('indexFolder', f"index_{default_aka}"))
     args = parser.parse_args()
-
-    if args.indexFolder is None:
-        args.indexFolder = f"index_{args.aka}"
 
     db_file      = args.dbName if args.dbName.endswith('.db') else args.dbName + '.db'
     patent_table = args.aka + '_patent'
