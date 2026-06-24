@@ -37,14 +37,13 @@ def _load_args_file():
 
 # Parse config at module level (parse_known_args avoids conflicts with uvicorn args)
 _saved = _load_args_file()
+_default_aka = _saved.get('aka', 'LGD')
 _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument("--dbName",      default=_saved.get('dbName',      'US_patent'))
-_parser.add_argument("--aka",         default=_saved.get('aka',         'LGD'))
+_parser.add_argument("--aka",         default=_default_aka)
 _parser.add_argument("--imageFolder", default=_saved.get('imageFolder', 'Patent_images'))
-_parser.add_argument("--indexFolder", default=None)
+_parser.add_argument("--indexFolder", default=_saved.get('indexFolder', f"index_{_default_aka}"))
 _cfg, _ = _parser.parse_known_args()
-if _cfg.indexFolder is None:
-    _cfg.indexFolder = f"index_{_cfg.aka}"
 
 AKA       = _cfg.aka
 INDEX_DIR = _cfg.indexFolder
